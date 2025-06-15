@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Blue Monster</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow-x: hidden;
+        }
+        h1 {
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            margin: 20px 0;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 40px;
+            padding: 20px;
+        }
+        .animation-container {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+        .animation-container:hover {
+            transform: translateY(-10px);
+        }
+        canvas {
+            background-color: transparent;
+            margin-bottom: 15px;
+        }
+        h2 {
+            color: white;
+            margin: 0 0 15px 0;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        .stats {
+            color: white;
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interactive Monster Animations By Afaq Ahmad</h1>
+    
+    <div class="controls">
+        <button id="colorBtn">Change Color</button>
+        <button id="sizeBtn">Change Size</button>
+        <button id="moodBtn">Change Mood</button>
+        <button id="resetBtn">Reset All</button>
+    </div>
+    
+    <div class="container">
+        <div class="animation-container">
+            <h2>Talking Monster</h2>
+            <canvas id="talkingCanvas" width="250" height="250"></canvas>
+            <div class="stats" id="talkingStats"></div>
+        </div>
+        <div class="animation-container">
+            <h2>Hearing Monster</h2>
+            <canvas id="hearingCanvas" width="250" height="250"></canvas>
+            <div class="stats" id="hearingStats"></div>
+        </div>
+    </div>
+
+    <script>
+        const monsterData = {
+            color: "#5D9BEC",
+            eyeColor: "#FFFFFF",
+            pupilColor: "#000000",
+            mouthColor: "#000000",
+            size: 1.0,
+            mood: "happy",
+            animations: {
+                talking: {
+                    mouth: {
+                        minSize: 5,
+                        maxSize: 25,
+                        speed: 0.12,
+                        currentSize: 15
+                    },
+                    eyeMovement: {
+                        range: 5,
+                        speed: 0.05
+                    }
+                },
+                hearing: {
+                    ears: {
+                        minSize: 20,
+                        maxSize: 50,
+                        speed: 0.07,
+                        currentSize: 35
+                    },
+                    sensitivity: 2.5
+                }
+            },
+            colors: ["#5D9BEC", "#EC5D5D", "#5DECA2", "#EC5DDF", "#5D77EC"],
+            moods: ["happy", "angry", "surprised", "sad"]
+        };
+
+        let frameCount = 0;
+        let mouseX = 0;
+        let mouseY = 0;
+        let audioContext;
+        let analyser;
+        let microphone;
+        let isMicActive = false;
+        let frequencyData;
+
+        const talkingCanvas = document.getElementById('talkingCanvas');
+        const hearingCanvas = document.getElementById('hearingCanvas');
+        const talkingCtx = talkingCanvas.getContext('2d');
+        const hearingCtx = hearingCanvas.getContext('2d');
+        const talkingStats = document.getElementById('talkingStats');
+        const hearingStats = document.getElementById('hearingStats');
+        const colorBtn = document.getElementById('colorBtn');
+        const sizeBtn = document.getElementById('sizeBtn');
+        const moodBtn = document.getElementById('moodBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 64;
+            frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        }
+
+        async function toggleMicrophone() {
+            if (!audioContext) initAudio();
+            
+            if (!isMicActive) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    microphone = audioContext.createMediaStreamSource(stream);
+                    microphone.connect(analyser);
+                    isMicActive = true;
+                    moodBtn.textContent = "Stop Listening";
+                } catch (err) {
+                    console.error("Error accessing microphone:", err);
+                }
+            } else {
+                if (microphone) microphone.disconnect();
+                isMicActive = false;
+                moodBtn.textContent = "Change Mood";
+            }
+        }
+
+        function updateStats() {
+            talkingStats.textContent = `Mood: ${monsterData.mood} | Size: ${Math.round(monsterData.size * 100)}%`;
+            hearingStats.textContent = `Mood: ${monsterData.mood} | Size: ${Math.round(monsterData.size * 100)}%`;
+        }
+
+        function changeColor() {
+            const currentIndex = monsterData.colors.indexOf(monsterData.color);
+            const nextIndex = (currentIndex + 1) % monsterData.colors.length;
+            monsterData.color = monsterData.colors[nextIndex];
+            updateStats();
+        }
+
+        function changeSize() {
+            monsterData.size = monsterData.size === 1.0 ? 1.3 : monsterData.size === 1.3 ? 0.7 : 1.0;
+            updateStats();
+        }
+
+        function changeMood() {
+            if (!isMicActive) {
+                const currentIndex = monsterData.moods.indexOf(monsterData.mood);
+                const nextIndex = (currentIndex + 1) % monsterData.moods.length;
+                monsterData.mood = monsterData.moods[nextIndex];
+                updateStats();
+            } else {
+                toggleMicrophone();
+            }
+        }
+
+        function resetAll() {
+            monsterData.color = "#5D9BEC";
+            monsterData.size = 1.0;
+            monsterData.mood = "happy";
+            if (isMicActive) toggleMicrophone();
+            updateStats();
+        }
+
+        function drawTalkingMonster(ctx, frameCount) {
+            const centerX = talkingCanvas.width / 2;
+            const centerY = talkingCanvas.height / 2;
+            const scaledSize = 80 * monsterData.size;
+            
+            ctx.clearRect(0, 0, talkingCanvas.width, talkingCanvas.height);
+            
+            ctx.fillStyle = monsterData.color;
+            
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, scaledSize, scaledSize * 1.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            const eyeOffsetX = 30 * monsterData.size;
+            const eyeOffsetY = 20 * monsterData.size;
+            const eyeSizeX = 20 * monsterData.size;
+            const eyeSizeY = 25 * monsterData.size;
+            const pupilSizeX = 8 * monsterData.size;
+            const pupilSizeY = 10 * monsterData.size;
+            
+            const eyeMoveX = Math.sin(frameCount * monsterData.animations.talking.eyeMovement.speed) * monsterData.animations.talking.eyeMovement.range;
+            const eyeMoveY = Math.cos(frameCount * monsterData.animations.talking.eyeMovement.speed * 0.7) * monsterData.animations.talking.eyeMovement.range;
+            
+            ctx.fillStyle = monsterData.eyeColor;
+            ctx.beginPath();
+            ctx.ellipse(centerX - eyeOffsetX, centerY - eyeOffsetY + eyeMoveY, eyeSizeX, eyeSizeY, 0, 0, Math.PI * 2);
+            ctx.ellipse(centerX + eyeOffsetX, centerY - eyeOffsetY + eyeMoveY, eyeSizeX, eyeSizeY, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = monsterData.pupilColor;
+            ctx.beginPath();
+            ctx.ellipse(centerX - eyeOffsetX + eyeMoveX, centerY - eyeOffsetY + eyeMoveY, pupilSizeX, pupilSizeY, 0, 0, Math.PI * 2);
+            ctx.ellipse(centerX + eyeOffsetX + eyeMoveX, centerY - eyeOffsetY + eyeMoveY, pupilSizeX, pupilSizeY, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            monsterData.animations.talking.mouth.currentSize = 
+                monsterData.animations.talking.mouth.minSize + 
+                (Math.sin(frameCount * monsterData.animations.talking.mouth.speed) + 1) / 2 * 
+                (monsterData.animations.talking.mouth.maxSize - monsterData.animations.talking.mouth.minSize);
+            
+            const mouthWidth = 30 * monsterData.size;
+            const mouthHeight = monsterData.animations.talking.mouth.currentSize * monsterData.size;
+            const mouthYOffset = 20 * monsterData.size;
+            
+            ctx.fillStyle = monsterData.mouthColor;
+            
+            if (monsterData.mood === "happy") {
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY + mouthYOffset, mouthWidth, mouthHeight, 0, 0, Math.PI);
+                ctx.fill();
+            } else if (monsterData.mood === "angry") {
+                ctx.beginPath();
+                ctx.moveTo(centerX - mouthWidth, centerY + mouthYOffset - 5);
+                ctx.lineTo(centerX + mouthWidth, centerY + mouthYOffset - 5);
+                ctx.lineWidth = 3 * monsterData.size;
+                ctx.stroke();
+            } else if (monsterData.mood === "surprised") {
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY + mouthYOffset, mouthWidth * 0.7, mouthHeight * 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (monsterData.mood === "sad") {
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY + mouthYOffset + 10, mouthWidth, mouthHeight, 0, Math.PI, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            const hornSize = 10 * monsterData.size;
+            ctx.beginPath();
+            ctx.moveTo(centerX - eyeOffsetX * 1.2, centerY - eyeOffsetY * 2.5);
+            ctx.lineTo(centerX - eyeOffsetX, centerY - eyeOffsetY * 3.5);
+            ctx.lineTo(centerX - eyeOffsetX * 0.7, centerY - eyeOffsetY * 2.5);
+            ctx.moveTo(centerX + eyeOffsetX * 1.2, centerY - eyeOffsetY * 2.5);
+            ctx.lineTo(centerX + eyeOffsetX, centerY - eyeOffsetY * 3.5);
+            ctx.lineTo(centerX + eyeOffsetX * 0.7, centerY - eyeOffsetY * 2.5);
+            ctx.fillStyle = monsterData.color;
+            ctx.fill();
+        }
+
+        function drawHearingMonster(ctx, frameCount) {
+            const centerX = hearingCanvas.width / 2;
+            const centerY = hearingCanvas.height / 2;
+            const scaledSize = 80 * monsterData.size;
+            
+            ctx.clearRect(0, 0, hearingCanvas.width, hearingCanvas.height);
+            
+            let earSize = monsterData.animations.hearing.ears.currentSize * monsterData.size;
+            
+            if (isMicActive && analyser) {
+                analyser.getByteFrequencyData(frequencyData);
+                const average = frequencyData.reduce((a, b) => a + b) / frequencyData.length;
+                earSize = monsterData.animations.hearing.ears.minSize + 
+                    (average / 255) * 
+                    (monsterData.animations.hearing.ears.maxSize - monsterData.animations.hearing.ears.minSize) * 
+                    monsterData.animations.hearing.sensitivity;
+                monsterData.animations.hearing.ears.currentSize = earSize;
+            } else {
+                earSize = monsterData.animations.hearing.ears.minSize + 
+                    (Math.sin(frameCount * monsterData.animations.hearing.ears.speed) + 1) / 2 * 
+                    (monsterData.animations.hearing.ears.maxSize - monsterData.animations.hearing.ears.minSize);
+                monsterData.animations.hearing.ears.currentSize = earSize;
+            }
+            
+            ctx.fillStyle = monsterData.color;
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX - scaledSize * 0.9, centerY - scaledSize * 0.6);
+            ctx.lineTo(centerX - scaledSize * 1.1, centerY - scaledSize * 0.6 - earSize);
+            ctx.lineTo(centerX - scaledSize * 0.7, centerY - scaledSize * 0.6);
+            
+            ctx.moveTo(centerX + scaledSize * 0.9, centerY - scaledSize * 0.6);
+            ctx.lineTo(centerX + scaledSize * 1.1, centerY - scaledSize * 0.6 - earSize);
+            ctx.lineTo(centerX + scaledSize * 0.7, centerY - scaledSize * 0.6);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, scaledSize, scaledSize * 1.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            const eyeOffsetX = 30 * monsterData.size;
+            const eyeOffsetY = 20 * monsterData.size;
+            const eyeSizeX = 20 * monsterData.size;
+            const eyeSizeY = 25 * monsterData.size;
+            const pupilSizeX = 8 * monsterData.size;
+            const pupilSizeY = 10 * monsterData.size;
+            
+            ctx.fillStyle = monsterData.eyeColor;
+            ctx.beginPath();
+            ctx.ellipse(centerX - eyeOffsetX, centerY - eyeOffsetY, eyeSizeX, eyeSizeY, 0, 0, Math.PI * 2);
+            ctx.ellipse(centerX + eyeOffsetX, centerY - eyeOffsetY, eyeSizeX, eyeSizeY, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            const mouseFactorX = (mouseX - centerX) / centerX * 5;
+            const mouseFactorY = (mouseY - centerY) / centerY * 5;
+            
+            ctx.fillStyle = monsterData.pupilColor;
+            ctx.beginPath();
+            ctx.ellipse(
+                centerX - eyeOffsetX + Math.min(mouseFactorX, eyeSizeX - pupilSizeX), 
+                centerY - eyeOffsetY + Math.min(mouseFactorY, eyeSizeY - pupilSizeY), 
+                pupilSizeX, pupilSizeY, 0, 0, Math.PI * 2
+            );
+            ctx.ellipse(
+                centerX + eyeOffsetX + Math.min(mouseFactorX, eyeSizeX - pupilSizeX), 
+                centerY - eyeOffsetY + Math.min(mouseFactorY, eyeSizeY - pupilSizeY), 
+                pupilSizeX, pupilSizeY, 0, 0, Math.PI * 2
+            );
+            ctx.fill();
+            
+            const mouthWidth = 30 * monsterData.size;
+            const mouthHeight = 10 * monsterData.size;
+            const mouthYOffset = 20 * monsterData.size;
+            
+            ctx.fillStyle = monsterData.mouthColor;
+            
+            if (monsterData.mood === "happy") {
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY + mouthYOffset, mouthWidth, mouthHeight, 0, 0, Math.PI);
+                ctx.fill();
+            } else if (monsterData.mood === "angry") {
+                ctx.beginPath();
+                ctx.moveTo(centerX - mouthWidth, centerY + mouthYOffset - 5);
+                ctx.lineTo(centerX + mouthWidth, centerY + mouthYOffset - 5);
+                ctx.lineWidth = 3 * monsterData.size;
+                ctx.stroke();
+            } else if (monsterData.mood === "surprised") {
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY + mouthYOffset, mouthWidth * 0.7, mouthHeight * 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (monsterData.mood === "sad") {
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY + mouthYOffset + 10, mouthWidth, mouthHeight, 0, Math.PI, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function animate() {
+            drawTalkingMonster(talkingCtx, frameCount);
+            drawHearingMonster(hearingCtx, frameCount);
+            frameCount++;
+            requestAnimationFrame(animate);
+        }
+
+        function handleMouseMove(e) {
+            mouseX = e.clientX - talkingCanvas.getBoundingClientRect().left;
+            mouseY = e.clientY - talkingCanvas.getBoundingClientRect().top;
+        }
+
+        colorBtn.addEventListener('click', changeColor);
+        sizeBtn.addEventListener('click', changeSize);
+        moodBtn.addEventListener('click', changeMood);
+        resetBtn.addEventListener('click', resetAll);
+        document.addEventListener('mousemove', handleMouseMove);
+
+        updateStats();
+        animate();
+    </script>
+</body>
+</html>
